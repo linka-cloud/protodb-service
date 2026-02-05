@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package resource;
+
+import "filters/field_filter.proto";
+import "google/protobuf/field_mask.proto";
+import "patch/go.proto";
+import "pb/types.proto";
+
+option go_package = ".;resource";
+option (go.lint) = {all: true};
+
+service ResourceService {
+  rpc Create(CreateRequest) returns (CreateResponse);
+  rpc Read(ReadRequest) returns (ReadResponse);
+  rpc Update(UpdateRequest) returns (UpdateResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc List(ListRequest) returns (ListResponse);
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+
+  rpc AddLabels(AddLabelsRequest) returns (AddLabelsResponse);
+  rpc RemoveLabels(RemoveLabelsRequest) returns (RemoveLabelsResponse);
+}
+
+message CreateRequest {
+  Resource resource = 1;
+}
+
+message CreateResponse {
+  Resource resource = 1;
+}
+
+message ReadRequest {
+  string id = 1;
+  google.protobuf.FieldMask fields = 2;
+}
+
+message ReadResponse {
+  Resource resource = 1;
+}
+
+message UpdateRequest {
+  Resource resource = 1;
+  google.protobuf.FieldMask fields = 2;
+}
+
+message UpdateResponse {
+  Resource resource = 1;
+}
+
+message DeleteRequest {
+  string id = 1;
+}
+
+message DeleteResponse {}
+
+message ListRequest {
+  linka.cloud.protofilters.Expression filter = 1;
+  uint64 limit = 2;
+  uint64 offset = 3;
+  string token = 4;
+  google.protobuf.FieldMask fields = 5;
+}
+
+message ListResponse {
+  repeated Resource resources = 1;
+  bool has_next = 2;
+  string token = 3;
+}
+
+message WatchRequest {
+  linka.cloud.protofilters.Expression filter = 1;
+  google.protobuf.FieldMask fields = 2;
+}
+
+message WatchResponse {
+  enum Type {
+    UNKNOWN = 0;
+    ENTER = 1;
+    LEAVE = 2;
+    UPDATE = 3;
+  }
+  Type type = 1;
+  Resource old = 2;
+  Resource new = 3;
+}
+
+message Label {
+  string key = 1;
+  string value = 2;
+}
+
+message AddLabelsRequest {
+  string id = 1;
+  repeated Label labels = 2;
+}
+
+message AddLabelsResponse {
+  Resource resource = 1;
+}
+
+message RemoveLabelsRequest {
+  string id = 1;
+  repeated string keys = 2;
+}
+
+message RemoveLabelsResponse {
+  Resource resource = 1;
+}
