@@ -3,17 +3,19 @@ module go.linka.cloud/protodb-service
 go 1.25.6
 
 require (
-	go.linka.cloud/grpc-toolkit v0.4.5-0.20260109084739-252c3582d66e
-	go.linka.cloud/protodb v0.0.0-20250608165221-4edb3c6814af
-	go.linka.cloud/protofilters v0.8.2-0.20250209153700-12f397dfb6a5
+	go.linka.cloud/grpc-toolkit v0.4.5-0.20260226130700-3a67a95303d5
+	go.linka.cloud/protodb v0.0.0-20260402110333-d121dcc9d69a
+	go.linka.cloud/protofilters v0.9.1-0.20260308143537-aeb5a53b4953
 	google.golang.org/grpc v1.72.1
 	google.golang.org/protobuf v1.36.6
 )
 
 require (
+	github.com/RoaringBitmap/roaring/v2 v2.14.4 // indirect
 	github.com/alta/protopatch v0.5.3 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/bits-and-blooms/bitset v1.24.2 // indirect
 	github.com/bombsimon/logrusr/v4 v4.1.0 // indirect
 	github.com/bufbuild/protocompile v0.14.1 // indirect
 	github.com/caitlinelfring/go-env-default v1.1.0 // indirect
@@ -50,13 +52,15 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/memberlist v0.5.3 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
-	github.com/jhump/protoreflect v1.17.0 // indirect
+	github.com/jhump/protoreflect v1.17.1-0.20240913204751-8f5fd1dcb3c5 // indirect
+	github.com/jhump/protoreflect/v2 v2.0.0-beta.2 // indirect
 	github.com/justinas/alice v1.2.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/lyft/protoc-gen-star v0.6.2 // indirect
 	github.com/lyft/protoc-gen-star/v2 v2.0.4-0.20230330145011-496ad1ac90a4 // indirect
 	github.com/mennanov/fmutils v0.3.0 // indirect
 	github.com/miekg/dns v1.1.63 // indirect
+	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pires/go-proxyproto v0.8.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -72,8 +76,10 @@ require (
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
+	github.com/tidwall/btree v1.7.0 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	github.com/traefik/grpc-web v0.16.0 // indirect
+	github.com/weaviate/sroar v0.0.13 // indirect
 	go.linka.cloud/protoc-gen-defaults v0.4.0 // indirect
 	go.linka.cloud/protoc-gen-go-fields v0.4.0 // indirect
 	go.linka.cloud/protoc-gen-proxy v0.0.0-20230802234945-cc173b85cf13 // indirect

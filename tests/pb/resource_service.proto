@@ -5,7 +5,7 @@ package resource;
 import "filters/field_filter.proto";
 import "google/protobuf/field_mask.proto";
 import "patch/go.proto";
-import "pb/types.proto";
+import "tests/pb/types.proto";
 
 option go_package = ".;resource";
 option (go.lint) = {all: true};

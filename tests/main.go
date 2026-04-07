@@ -19,9 +19,6 @@ import (
 	pb "go.linka.cloud/protodb-service/tests/pb"
 )
 
-//go:generate protoc -I. -I/adphi/proto --go-patch_out=plugin=go,paths=source_relative:. --go-patch_out=plugin=go-grpc,paths=source_relative:. --go-patch_out=plugin=go-vtproto,paths=source_relative,features=marshal+unmarshal+size+equal+clone:. --go-patch_out=plugin=protodb-service,paths=source_relative:. pb/types.proto pb/resource_service.proto
-// //go:generate protoc -I. -I/adphi/proto --go_out=paths=source_relative:. --go-grpc_out=paths=source_relative:. --go-vtproto_out=paths=source_relative,features=marshal+unmarshal+size+equal+clone:. --protodb-service_out=paths=source_relative:. pb/pb.proto
-
 var (
 	_ pdbsvc.BeforeCreateHook[pb.Resource, *pb.Resource] = (*md)(nil)
 	_ pdbsvc.BeforeUpdateHook[pb.Resource, *pb.Resource] = (*md)(nil)
@@ -37,18 +34,14 @@ var (
 type md struct{}
 
 func (md) BeforeCreate(ctx context.Context, tx typed.Tx[pb.Resource, *pb.Resource], resource *pb.Resource) (*pb.Resource, error) {
-	if resource.Metadata == nil {
-		resource.Metadata = &pb.Metadata{}
-	}
-	resource.ID = uuid.NewString()
+	resource = ensureMetadata(resource)
+	resource.Metadata.ID = uuid.NewString()
 	resource.Metadata.CreatedAt = timestamppb.Now()
 	return resource, nil
 }
 
 func (md) BeforeUpdate(ctx context.Context, tx typed.Tx[pb.Resource, *pb.Resource], old, new *pb.Resource) (*pb.Resource, error) {
-	if new.Metadata == nil {
-		new.Metadata = &pb.Metadata{}
-	}
+	new = ensureMetadata(new)
 	new.Metadata.CreatedAt = old.Metadata.CreatedAt
 	new.Metadata.UpdatedAt = timestamppb.Now()
 	return new, nil
@@ -71,7 +64,8 @@ func (u unique) BeforeUpdate(ctx context.Context, tx typed.Tx[pb.Resource, *pb.R
 }
 
 func (unique) unique(ctx context.Context, tx typed.Tx[pb.Resource, *pb.Resource], resource *pb.Resource) error {
-	_, ok, err := tx.GetOne(ctx, &pb.Resource{}, protodb.WithFilter(protodb.Where("name").StringEquals(resource.Name).And("id").StringNotEquals(resource.ID)))
+	resource = ensureMetadata(resource)
+	_, ok, err := tx.GetOne(ctx, &pb.Resource{}, protodb.WithFilter(protodb.Where("name").StringEquals(resource.Name).AndWhere("metadata.id").StringNotEquals(resource.Metadata.ID)))
 	if err != nil {
 		return err
 	}
@@ -122,9 +116,7 @@ func (finalizer) BeforeDelete(ctx context.Context, tx typed.Tx[pb.Resource, *pb.
 	if len(resource.GetMetadata().GetFinalizers()) == 0 {
 		return true, nil
 	}
-	if resource.Metadata == nil {
-		resource.Metadata = &pb.Metadata{}
-	}
+	resource = ensureMetadata(resource)
 	if resource.Metadata.DeletedAt == nil {
 		resource.Metadata.DeletedAt = timestamppb.Now()
 	}
@@ -137,13 +129,8 @@ type svc struct {
 }
 
 func (s *svc) AddLabels(ctx context.Context, req *pb.AddLabelsRequest) (*pb.AddLabelsResponse, error) {
-	res, err := s.Service.Update(ctx, &pb.Resource{ID: req.ID}, nil, pdbsvc.WithBeforeUpdate(func(ctx context.Context, tx typed.Tx[pb.Resource, *pb.Resource], old, new *pb.Resource) (*pb.Resource, error) {
-		if old.Metadata == nil {
-			old.Metadata = &pb.Metadata{}
-		}
-		if old.Metadata.Labels == nil {
-			old.Metadata.Labels = make(map[string]string)
-		}
+	res, err := s.Service.Update(ctx, &pb.Resource{Metadata: &pb.Metadata{ID: req.ID}}, nil, pdbsvc.WithBeforeUpdate(func(ctx context.Context, tx typed.Tx[pb.Resource, *pb.Resource], old, new *pb.Resource) (*pb.Resource, error) {
+		old = ensureMetadata(old)
 		for _, v := range req.Labels {
 			old.Metadata.Labels[v.Key] = v.Value
 		}
@@ -156,10 +143,8 @@ func (s *svc) AddLabels(ctx context.Context, req *pb.AddLabelsRequest) (*pb.AddL
 }
 
 func (s *svc) RemoveLabels(ctx context.Context, req *pb.RemoveLabelsRequest) (*pb.RemoveLabelsResponse, error) {
-	res, err := s.Service.Update(ctx, &pb.Resource{ID: req.ID}, nil, pdbsvc.WithBeforeUpdate(func(ctx context.Context, tx typed.Tx[pb.Resource, *pb.Resource], old, new *pb.Resource) (*pb.Resource, error) {
-		if old.Metadata == nil || old.Metadata.Labels == nil {
-			return old, nil
-		}
+	res, err := s.Service.Update(ctx, &pb.Resource{Metadata: &pb.Metadata{ID: req.ID}}, nil, pdbsvc.WithBeforeUpdate(func(ctx context.Context, tx typed.Tx[pb.Resource, *pb.Resource], old, new *pb.Resource) (*pb.Resource, error) {
+		old = ensureMetadata(old)
 		for _, k := range req.Keys {
 			delete(old.Metadata.Labels, k)
 		}
@@ -169,6 +154,16 @@ func (s *svc) RemoveLabels(ctx context.Context, req *pb.RemoveLabelsRequest) (*p
 		return nil, err
 	}
 	return &pb.RemoveLabelsResponse{Resource: res}, nil
+}
+
+func ensureMetadata(r *pb.Resource) *pb.Resource {
+	if r.Metadata == nil {
+		r.Metadata = &pb.Metadata{}
+	}
+	if r.Metadata.Labels == nil {
+		r.Metadata.Labels = make(map[string]string)
+	}
+	return r
 }
 
 func run(ctx context.Context) error {
@@ -214,7 +209,7 @@ func run(ctx context.Context) error {
 
 	// Read Resource
 	readRes, err := c.Read(ctx, &resource.ReadRequest{
-		ID: createRes.Resource.ID,
+		ID: createRes.Resource.Metadata.ID,
 	})
 	if err != nil {
 		return fmt.Errorf("read resource: %w", err)
@@ -233,11 +228,11 @@ func run(ctx context.Context) error {
 	// Update Resource
 	updateRes, err := c.Update(ctx, &resource.UpdateRequest{
 		Resource: &pb.Resource{
-			ID:   createRes.Resource.ID,
-			Name: "Updated Resource",
 			Metadata: &pb.Metadata{
+				ID:         createRes.Resource.Metadata.ID,
 				Finalizers: []string{"protect-from-deletion"},
 			},
+			Name: "Updated Resource",
 		},
 	})
 	if err != nil {
@@ -245,7 +240,7 @@ func run(ctx context.Context) error {
 	}
 	fmt.Printf("Updated Resource: %v\n", updateRes.Resource)
 
-	addLabelsRes, err := c.AddLabels(ctx, &pb.AddLabelsRequest{ID: createRes.Resource.ID, Labels: []*pb.Label{{Key: "env", Value: "prod"}, {Key: "team", Value: "devops"}}})
+	addLabelsRes, err := c.AddLabels(ctx, &pb.AddLabelsRequest{ID: createRes.Resource.Metadata.ID, Labels: []*pb.Label{{Key: "env", Value: "prod"}, {Key: "team", Value: "devops"}}})
 	if err != nil {
 		return fmt.Errorf("add labels: %w", err)
 	}
@@ -254,7 +249,7 @@ func run(ctx context.Context) error {
 	}
 	fmt.Printf("Added Labels: %v\n", addLabelsRes.Resource.Metadata.Labels)
 
-	removeLabelsRes, err := c.RemoveLabels(ctx, &pb.RemoveLabelsRequest{ID: createRes.Resource.ID, Keys: []string{"env"}})
+	removeLabelsRes, err := c.RemoveLabels(ctx, &pb.RemoveLabelsRequest{ID: createRes.Resource.Metadata.ID, Keys: []string{"env"}})
 	if err != nil {
 		return fmt.Errorf("remove labels: %w", err)
 	}
@@ -265,14 +260,14 @@ func run(ctx context.Context) error {
 
 	// Delete Resource
 	_, err = c.Delete(ctx, &resource.DeleteRequest{
-		ID: createRes.Resource.ID,
+		ID: createRes.Resource.Metadata.ID,
 	})
 	if err != nil {
 		return fmt.Errorf("delete resource: %w", err)
 	}
 	fmt.Println("Soft Deleted Resource")
 	readRes, err = c.Read(ctx, &resource.ReadRequest{
-		ID: createRes.Resource.ID,
+		ID: createRes.Resource.Metadata.ID,
 	})
 	if err != nil {
 		return fmt.Errorf("read resource after soft delete: %w", err)
@@ -282,14 +277,14 @@ func run(ctx context.Context) error {
 	// Remove Finalizers
 	updateRes, err = c.Update(ctx, &resource.UpdateRequest{
 		Resource: &pb.Resource{
-			ID: createRes.Resource.ID,
+			Metadata: &pb.Metadata{ID: createRes.Resource.Metadata.ID},
 		},
 		Fields: &fieldmaskpb.FieldMask{Paths: []string{"metadata.finalizers"}},
 	})
 
 	// Hard Delete Resource
 	_, err = c.Delete(ctx, &resource.DeleteRequest{
-		ID: createRes.Resource.ID,
+		ID: createRes.Resource.Metadata.ID,
 	})
 	if err != nil {
 		return fmt.Errorf("hard delete resource: %w", err)

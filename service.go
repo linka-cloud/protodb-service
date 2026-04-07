@@ -39,6 +39,9 @@ func New[T any, R Resource[T]](store protodb.DB, opts ...Option[T, R]) Service[T
 	for _, v := range opts {
 		v(o)
 	}
+	if o.keyPath == "" {
+		o.keyPath = "id"
+	}
 	return &service[T, R]{store: store, opts: o}
 }
 
@@ -66,7 +69,7 @@ func (s *service[T, R]) Create(ctx context.Context, r R, opts ...Option[T, R]) (
 func (s *service[T, R]) Read(ctx context.Context, id string, fields *fieldmaskpb.FieldMask, opts ...Option[T, R]) (res R, err error) {
 	return typed.WithTypedTx2[T, R](ctx, s.store, func(ctx context.Context, tx typed.Tx[T, R]) (R, error) {
 		var z T
-		r, ok, err := tx.GetOne(ctx, &z, protodb.WithFilter(protodb.Where("id").StringEquals(id)), protodb.WithReadFieldMask(fields))
+		r, ok, err := tx.GetOne(ctx, &z, protodb.WithFilter(protodb.Where(s.opts.keyPath).StringEquals(id)), protodb.WithReadFieldMask(fields))
 		if err != nil {
 			return nil, gerrs.Internal(err)
 		}
@@ -107,7 +110,7 @@ func (s *service[T, R]) Update(ctx context.Context, r R, fields *fieldmaskpb.Fie
 func (s *service[T, R]) Delete(ctx context.Context, id string, opts ...Option[T, R]) (err error) {
 	return typed.WithTypedTx[T, R](ctx, s.store, func(ctx context.Context, tx typed.Tx[T, R]) error {
 		var z T
-		r, ok, err := tx.GetOne(ctx, &z, protodb.WithFilter(protodb.Where("id").StringEquals(id)))
+		r, ok, err := tx.GetOne(ctx, &z, protodb.WithFilter(protodb.Where(s.opts.keyPath).StringEquals(id)))
 		if err != nil {
 			return gerrs.Internal(err)
 		}

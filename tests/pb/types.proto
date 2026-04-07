@@ -3,22 +3,22 @@ syntax = "proto3";
 package resource;
 
 import "google/protobuf/timestamp.proto";
-
+import "protodb/protodb.proto";
 import "patch/go.proto";
 
 option go_package = ".;resource";
 option (go.lint) = {all: true};
 
 message Metadata {
-  google.protobuf.Timestamp created_at = 3;
-  google.protobuf.Timestamp updated_at = 4;
-  google.protobuf.Timestamp deleted_at = 5;
-  map<string, string> labels = 6;
-  repeated string finalizers = 7;
+  string id = 1 [(protodb.key) = true];
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Timestamp updated_at = 3;
+  google.protobuf.Timestamp deleted_at = 4;
+  map<string, string> labels = 5;
+  repeated string finalizers = 6;
 }
 
 message Resource {
-  string id = 1;
-  Metadata metadata = 2;
-  string name = 3;
+  Metadata metadata = 1;
+  string name = 2;
 }

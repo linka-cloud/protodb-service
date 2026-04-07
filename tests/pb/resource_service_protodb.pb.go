@@ -5,7 +5,7 @@ import (
 	context "context"
 	protodb "go.linka.cloud/protodb"
 	protodb_service "go.linka.cloud/protodb-service"
-	pb "go.linka.cloud/protodb/pb"
+	v1alpha1 "go.linka.cloud/protodb/protodb/v1alpha1"
 	filters "go.linka.cloud/protofilters/filters"
 	grpc "google.golang.org/grpc"
 )
@@ -13,7 +13,7 @@ import (
 var _ ResourceServiceServer = (*DefaultService)(nil)
 
 func NewDefaultService(db protodb.DB, opts ...protodb_service.Option[Resource, *Resource]) *DefaultService {
-	return &DefaultService{Service: protodb_service.New[Resource, *Resource](db, opts...)}
+	return &DefaultService{Service: protodb_service.New[Resource, *Resource](db, append([]protodb_service.Option[Resource, *Resource]{protodb_service.WithKeyPath[Resource, *Resource]("metadata.id")}, opts...)...)}
 }
 
 type DefaultService struct {
@@ -59,8 +59,8 @@ func (s *DefaultService) List(ctx context.Context, request *ListRequest) (*ListR
 	}
 	var hasNext bool
 	var pageToken string
-	var paging *pb.Paging
-	paging = &pb.Paging{
+	var paging *v1alpha1.Paging
+	paging = &v1alpha1.Paging{
 		Limit:  request.Limit,
 		Offset: request.Offset,
 		Token:  request.Token,

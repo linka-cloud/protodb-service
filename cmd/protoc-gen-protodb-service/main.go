@@ -3,14 +3,17 @@ package main
 import (
 	"fmt"
 
+	protodbopts "go.linka.cloud/protodb/protodb"
 	"google.golang.org/protobuf/compiler/protogen"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 const (
 	importPathProtodbService = "go.linka.cloud/protodb-service"
 	importPathProtodb        = "go.linka.cloud/protodb"
-	importPathProtodbPB      = "go.linka.cloud/protodb/pb"
+	importPathProtodbPB      = "go.linka.cloud/protodb/protodb/v1alpha1"
 	importPathGrpc           = "google.golang.org/grpc"
 	importPathContext        = "context"
 	importPathFilters        = "go.linka.cloud/protofilters/filters"
@@ -69,6 +72,10 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 
 	resourceName := resourceMessage.GoIdent.GoName
 	resourcePtr := "*" + resourceName
+	resourceKeyPath := "id"
+	if path, ok := findKeyPath(resourceMessage); ok {
+		resourceKeyPath = dotPath(path)
+	}
 
 	protodbService := protogen.GoImportPath(importPathProtodbService)
 	protodb := protogen.GoImportPath(importPathProtodb)
@@ -80,13 +87,13 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 	var (
 		createResourceField     *protogen.Field
 		createResponseField     *protogen.Field
-		readIDField             *protogen.Field
+		readKeyAccessor         string
 		readFieldsField         *protogen.Field
 		readResponseField       *protogen.Field
 		updateResourceField     *protogen.Field
 		updateFieldsField       *protogen.Field
 		updateResponseField     *protogen.Field
-		deleteIDField           *protogen.Field
+		deleteKeyAccessor       string
 		listFilterField         *protogen.Field
 		listFieldsField         *protogen.Field
 		listPagingField         *protogen.Field
@@ -102,7 +109,7 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 		watchOldField           *protogen.Field
 		watchNewField           *protogen.Field
 		watchTypeField          *protogen.Field
-		watchEnum               *protogen.Enum
+		watchTypeEnum           *protogen.Enum
 	)
 
 	createOK := false
@@ -114,10 +121,10 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 
 	readOK := false
 	if read != nil {
-		readIDField = findFieldByName(read.Input, "id")
+		readKeyAccessor = findRequestKeyAccessor(read.Input, resourceMessage)
 		readFieldsField = findFieldByName(read.Input, "fields")
 		readResponseField, _ = findMessageField(read.Output, resourceMessage)
-		readOK = readIDField != nil && readResponseField != nil
+		readOK = readKeyAccessor != "" && readResponseField != nil
 	}
 
 	updateOK := false
@@ -130,8 +137,8 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 
 	deleteOK := false
 	if deleteMethod != nil {
-		deleteIDField = findFieldByName(deleteMethod.Input, "id")
-		deleteOK = deleteIDField != nil
+		deleteKeyAccessor = findRequestKeyAccessor(deleteMethod.Input, resourceMessage)
+		deleteOK = deleteKeyAccessor != ""
 	}
 
 	listOK := false
@@ -156,8 +163,10 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 		watchOldField = findFieldByName(watch.Output, "old")
 		watchNewField = findFieldByName(watch.Output, "new")
 		watchTypeField = findFieldByName(watch.Output, "type")
-		watchEnum = findEnumByName(watch.Output, "Type")
-		watchOK = watchOldField != nil && watchNewField != nil && watchTypeField != nil && watchEnum != nil
+		if watchTypeField != nil {
+			watchTypeEnum = watchTypeField.Enum
+		}
+		watchOK = watchOldField != nil && watchNewField != nil && watchTypeField != nil && watchTypeEnum != nil
 	}
 
 	methodsGenerated := 0
@@ -174,7 +183,11 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 	g.P()
 
 	g.P("func ", newFuncName, "(db ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "DB", GoImportPath: protodb}), ", opts ...", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Option", GoImportPath: protodbService}), "[", resourceName, ", ", resourcePtr, "]) *", structName, " {")
-	g.P("\treturn &", structName, "{Service: ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "New", GoImportPath: protodbService}), "[", resourceName, ", ", resourcePtr, "](db, opts...)}")
+	if resourceKeyPath == "id" {
+		g.P("\treturn &", structName, "{Service: ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "New", GoImportPath: protodbService}), "[", resourceName, ", ", resourcePtr, "](db, opts...)}")
+	} else {
+		g.P("\treturn &", structName, "{Service: ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "New", GoImportPath: protodbService}), "[", resourceName, ", ", resourcePtr, "](db, append([]", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Option", GoImportPath: protodbService}), "[", resourceName, ", ", resourcePtr, "]{", g.QualifiedGoIdent(protogen.GoIdent{GoName: "WithKeyPath", GoImportPath: protodbService}), "[", resourceName, ", ", resourcePtr, "](", fmt.Sprintf("%q", resourceKeyPath), ")}, opts...)...)}")
+	}
 	g.P("}")
 	g.P()
 
@@ -198,9 +211,9 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 	if readOK {
 		g.P("func (s *", structName, ") Read(ctx ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Context", GoImportPath: ctxPkg}), ", request *", read.Input.GoIdent.GoName, ") (*", read.Output.GoIdent.GoName, ", error) {")
 		if readFieldsField != nil {
-			g.P("\tres, err := s.Service.Read(ctx, request.", readIDField.GoName, ", request.", readFieldsField.GoName, ")")
+			g.P("\tres, err := s.Service.Read(ctx, ", readKeyAccessor, ", request.", readFieldsField.GoName, ")")
 		} else {
-			g.P("\tres, err := s.Service.Read(ctx, request.", readIDField.GoName, ", nil)")
+			g.P("\tres, err := s.Service.Read(ctx, ", readKeyAccessor, ", nil)")
 		}
 		g.P("\tif err != nil {")
 		g.P("\t\treturn nil, err")
@@ -227,7 +240,7 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 
 	if deleteOK {
 		g.P("func (s *", structName, ") Delete(ctx ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Context", GoImportPath: ctxPkg}), ", request *", deleteMethod.Input.GoIdent.GoName, ") (*", deleteMethod.Output.GoIdent.GoName, ", error) {")
-		g.P("\tif err := s.Service.Delete(ctx, request.", deleteIDField.GoName, "); err != nil {")
+		g.P("\tif err := s.Service.Delete(ctx, ", deleteKeyAccessor, "); err != nil {")
 		g.P("\t\treturn nil, err")
 		g.P("\t}")
 		g.P("\treturn &", deleteMethod.Output.GoIdent.GoName, "{}, nil")
@@ -337,7 +350,7 @@ func generateService(g *protogen.GeneratedFile, file *protogen.File, service *pr
 
 		g.P("func (w *", watchStreamName, ") Send(ev *", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Event", GoImportPath: protodbService}), "[", resourceName, ", ", resourcePtr, "]) error {")
 		g.P("\treturn w.ServerStreamingServer.Send(&", watch.Output.GoIdent.GoName, "{")
-		g.P("\t\t", watchTypeField.GoName, ": ", watchEnum.GoIdent.GoName, "(ev.Type),")
+		g.P("\t\t", watchTypeField.GoName, ": ", watchTypeEnum.GoIdent.GoName, "(ev.Type),")
 		g.P("\t\t", watchOldField.GoName, ": ev.Old,")
 		g.P("\t\t", watchNewField.GoName, ": ev.New,")
 		g.P("\t})")
@@ -415,13 +428,121 @@ func findFieldByName(message *protogen.Message, name string) *protogen.Field {
 	return nil
 }
 
-func findEnumByName(message *protogen.Message, name string) *protogen.Enum {
-	for _, enum := range message.Enums {
-		if string(enum.Desc.Name()) == name {
-			return enum
+func findRequestKeyAccessor(request *protogen.Message, resource *protogen.Message) string {
+	if request == nil || resource == nil {
+		return ""
+	}
+	if path, ok := findKeyPath(resource); ok {
+		if accessor, ok := accessorForPath(request, path); ok {
+			return accessor
+		}
+		leaf := path[len(path)-1]
+		if field := findFieldByName(request, leaf); field != nil {
+			return "request." + field.GoName
 		}
 	}
-	return nil
+	for _, name := range []string{"id", "key", "name"} {
+		if field := findFieldByName(request, name); field != nil {
+			return "request." + field.GoName
+		}
+	}
+	return ""
+}
+
+func accessorForPath(message *protogen.Message, names []string) (string, bool) {
+	if message == nil || len(names) == 0 {
+		return "", false
+	}
+	current := message
+	accessor := "request"
+	for i, name := range names {
+		field := findFieldByName(current, name)
+		if field == nil {
+			return "", false
+		}
+		accessor += "." + field.GoName
+		if i == len(names)-1 {
+			if field.Message != nil || field.Desc.IsMap() || field.Desc.Cardinality() == protoreflect.Repeated {
+				return "", false
+			}
+			return accessor, true
+		}
+		if field.Message == nil || field.Desc.IsMap() || field.Desc.Cardinality() == protoreflect.Repeated {
+			return "", false
+		}
+		current = field.Message
+	}
+	return "", false
+}
+
+func findKeyPath(message *protogen.Message) ([]string, bool) {
+	if message == nil {
+		return nil, false
+	}
+	stack := map[protoreflect.FullName]bool{message.Desc.FullName(): true}
+	path, ok := findKeyPathIn(message, nil, stack)
+	if !ok {
+		return nil, false
+	}
+	names := make([]string, 0, len(path))
+	for _, field := range path {
+		names = append(names, string(field.Desc.Name()))
+	}
+	return names, true
+}
+
+func dotPath(path []string) string {
+	out := ""
+	for i, part := range path {
+		if i != 0 {
+			out += "."
+		}
+		out += part
+	}
+	return out
+}
+
+func findKeyPathIn(message *protogen.Message, path []*protogen.Field, stack map[protoreflect.FullName]bool) ([]*protogen.Field, bool) {
+	for _, field := range message.Fields {
+		next := make([]*protogen.Field, 0, len(path)+1)
+		next = append(next, path...)
+		next = append(next, field)
+		if isExplicitKey(field) {
+			return next, true
+		}
+		if field.Message == nil || field.Desc.IsMap() || field.Desc.Cardinality() == protoreflect.Repeated {
+			continue
+		}
+		name := field.Message.Desc.FullName()
+		if stack[name] {
+			continue
+		}
+		stack[name] = true
+		if nested, ok := findKeyPathIn(field.Message, next, stack); ok {
+			return nested, true
+		}
+		delete(stack, name)
+	}
+	return nil, false
+}
+
+func isExplicitKey(field *protogen.Field) bool {
+	if field == nil {
+		return false
+	}
+	options, ok := field.Desc.Options().(*descriptorpb.FieldOptions)
+	if !ok {
+		return false
+	}
+	v := proto.GetExtension(options, protodbopts.E_Key)
+	if v == nil {
+		return false
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false
+	}
+	return b
 }
 
 func findResourceField(message *protogen.Message) (*protogen.Field, *protogen.Message, error) {

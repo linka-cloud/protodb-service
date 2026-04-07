@@ -8,6 +8,15 @@ import (
 
 type Option[T any, R Resource[T]] func(s *options[T, R])
 
+func WithKeyPath[T any, R Resource[T]](path string) Option[T, R] {
+	return func(o *options[T, R]) {
+		if path == "" {
+			return
+		}
+		o.keyPath = path
+	}
+}
+
 func WithHooks[T any, R Resource[T]](hooks ...any) Option[T, R] {
 	return func(o *options[T, R]) {
 		for _, v := range hooks {
@@ -97,6 +106,7 @@ func WithBeforeEmit[T any, R Resource[T]](fn func(ctx context.Context, store typ
 }
 
 type options[T any, R Resource[T]] struct {
+	keyPath      string
 	beforeCreate []BeforeCreateHook[T, R]
 	afterCreate  []AfterCreateHook[T, R]
 	beforeUpdate []BeforeUpdateHook[T, R]
@@ -204,6 +214,7 @@ func (o *options[T, R]) BeforeEmit(ctx context.Context, store typed.Store[T, R],
 
 func (o *options[T, R]) merge(opts ...Option[T, R]) *options[T, R] {
 	o2 := &options[T, R]{}
+	o2.keyPath = o.keyPath
 	o2.beforeCreate = append(o2.beforeCreate, o.beforeCreate...)
 	o2.afterCreate = append(o2.afterCreate, o.afterCreate...)
 	o2.beforeUpdate = append(o2.beforeUpdate, o.beforeUpdate...)
